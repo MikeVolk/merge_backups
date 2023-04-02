@@ -4,3 +4,7 @@
 backup_location/
 
 folder_to_backup/
+
+merge_backups/__pycache__/
+
+tests/__pycache__/

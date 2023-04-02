@@ -48,10 +48,30 @@ def build_file_tree(root):
 
 def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False):
     """
-    Merge a folder to be backed up with a backup location, handling file
-    conflicts by keeping the newest file and moving the older version to a
-    '.oldversion' subfolder. Identical files in both locations will result in
-    the deletion of the file in the folder to be backed up.
+    The code defines a function called merge_backup(). The function takes in
+    three required arguments and two optional arguments. The required arguments
+    are folder_to_backup and backup_location which are the paths of the folder
+    to be backed up and the backup location respectively. The optional arguments
+    are verbose and dry_run and are set to False by default.
+    The function handles file conflicts between the two locations by keeping the
+    newest file and moving the older version to a .oldversion subfolder. If both
+    files are identical, the function deletes the file from the folder to be
+    backed up. The function first initializes logging settings for different
+    levels of verbosity. It then builds file trees for both the folder to be
+    backed up and the backup location. These file trees are created as python
+    dictionaries with file paths as keys and their modification times as values.
+    The function then iterates through each file in the folder to be backed up
+    and checks if the file exists in the backup location. If the file exists,
+    the function compares the files in both locations to determine if they are
+    identical. If they are identical, the function deletes the file from the
+    folder to be backed up. If they are not identical, the function creates a
+    .oldversion folder in the destination directory, generates a new filename
+    with the last modified timestamp for the old version file, and moves the
+    older file in the backup location to the .oldversion folder while copying
+    the newer file from the folder to be backed up to the backup location. If
+    the file does not exist in the backup location, the function simply copies
+    the file from the folder to be backed up to the backup location. The
+    function returns nothing. All its output is in the form of logging messages.
 
     Args:
         folder_to_backup (str): The path of the folder to be backed up.
@@ -62,6 +82,7 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
                                   would be done without actually executing the
                                   operations. Default is False.
     """
+    start_time = time.process_time_ns()
 
     # Configure logging settings
     log_file_path = os.path.join(backup_location, "backup_merger.log")
@@ -69,6 +90,9 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
     log_level = logging.INFO if verbose else logging.WARNING
 
     logging.basicConfig(filename=log_file_path, level=log_level, format=log_format, filemode="w")
+    logging.info("------------------------------------------------------------")
+    logging.info(f"Starting backup merge from {folder_to_backup} to {backup_location}")
+    logging.info("------------------------------------------------------------")
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(log_level)
@@ -83,59 +107,86 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
     folder_to_backup_tree = build_file_tree(folder_to_backup)
     backup_location_tree = build_file_tree(backup_location)
 
-    # Iterate through each file in the folder_to_backup_tree
+    # Iterate through the source file tree
     for rel_path, source_mtime in folder_to_backup_tree.items():
+        # Construct the absolute file paths for the source and destination files
         source_file_path = os.path.join(folder_to_backup, rel_path)
         dest_file_path = os.path.join(backup_location, rel_path)
 
-        # Check if the file exists in the backup_location_tree
+        # Check if the file exists in the destination file tree
         if rel_path in backup_location_tree:
+            logging.info(f"Found file {rel_path} in backup location")
+            # Get the modification time of the destination file
             dest_mtime = backup_location_tree[rel_path]
 
-            # Compare the files in both locations to see if they are identical
+            # Compare the content of the source and destination files.
+            # If the content is the same, delete the source file.
             if filecmp.cmp(source_file_path, dest_file_path, shallow=False):
-                logging.info(f"Files are the same, deleting {source_file_path}")
+                logging.info(f" SAME, deleting {source_file_path}")
                 if not dry_run:
                     os.remove(source_file_path)
             else:
-                # Create the .oldversion folder in the destination directory
+                # If the content is different, determine which file is newer
+                # and move the older file to the '.oldversion' subfolder.
 
+                # Create the '.oldversion' subfolder if it doesn't exist
                 old_versions_dir = os.path.join(os.path.dirname(dest_file_path), ".oldversion")
                 if not dry_run:
                     Path(old_versions_dir).mkdir(exist_ok=True)
 
-                # Compare file modification times to determine which file is newer
+                # If the source file is newer, move the destination file to
+                # '.oldversion' and copy the source file to the destination.
                 if source_mtime > dest_mtime:
-                    # Generate an old_version filename with the last modified timestamp
                     old_version_datetime = datetime.fromtimestamp(dest_mtime).strftime(
                         "%Y%m%d_%H%M%S"
                     )
                     old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
                     old_version_path = os.path.join(old_versions_dir, old_version_filename)
-
-                    # Move the older file in the backup_location to the .oldversion folder
-                    # and copy the newer file from the folder_to_backup to the backup_location
-                    logging.info(f"Moving {dest_file_path} to {old_version_path}")
-                    logging.info(f"Copying {source_file_path} to {dest_file_path}")
+                    logging.info(
+                        f" NEWER: {source_file_path} is newer than destination file {dest_file_path}"
+                    )
+                    logging.info(f"  Moving {dest_file_path} to {old_version_path}")
+                    logging.info(f"  Moving {source_file_path} to {dest_file_path}")
                     if not dry_run:
                         shutil.move(dest_file_path, old_version_path)
-                        shutil.copy2(source_file_path, dest_file_path)
-
-                # Generate an old_version filename with the last modified timestamp
+                        shutil.move(source_file_path, dest_file_path)
+                # If the destination file is newer, move the source file to
+                # '.oldversion'.
                 elif source_mtime < dest_mtime:
                     old_version_datetime = datetime.fromtimestamp(source_mtime).strftime(
                         "%Y%m%d_%H%M%S"
                     )
                     old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
                     old_version_path = os.path.join(old_versions_dir, old_version_filename)
-                    logging.info(f"Moving {source_file_path} to {old_version_path}")
+                    logging.info(
+                        f" OLDER: {source_file_path} is older than destination file {dest_file_path}"
+                    )
+                    logging.info(f" Moving {source_file_path} to {old_version_path}")
                     if not dry_run:
                         shutil.move(source_file_path, old_version_path)
+        # If the file does not exist in the destination file tree,
+        # simply move the file from the source to the destination.
         else:
-            logging.info(f"Copying {source_file_path} to {dest_file_path}")
+            logging.info(f"Moving {source_file_path} to {dest_file_path}")
             if not dry_run:
-                Path(os.path.dirname(dest_file_path)).mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source_file_path, dest_file_path)
+                # Create the destination folder if it doesn't exist
+                dest_folder_path = os.path.dirname(dest_file_path)
+                Path(dest_folder_path).mkdir(parents=True, exist_ok=True)
+
+                # Copy the file from the source to the destination
+                shutil.move(source_file_path, dest_file_path)
+
+    logging.info(
+        f"FINISHED copying {len(folder_to_backup_tree.items())} files from {folder_to_backup} to {backup_location}"
+    )
+
+    if not dry_run:
+        # Remove the folder_to_backup after successful merge
+        shutil.rmtree(folder_to_backup)
+        logging.info(f"Deleted {folder_to_backup}")
+
+    logging.info(f"Time elapsed: {(time.process_time_ns() - start_time)/1e9:.5f}s")
+    logging.info("------------------------------------------------------------")
 
 
 def create_test_file(path, content, modified_time=None):
@@ -146,10 +197,10 @@ def create_test_file(path, content, modified_time=None):
         os.utime(path, (modified_time.timestamp(), modified_time.timestamp()))
 
 
-def create_test_files_and_folders():
-    folder_to_backup = "folder_to_backup"
-    backup_location = "backup_location"
-
+def create_test_files_and_folders(
+    folder_to_backup="folder_to_backup",
+    backup_location="backup_location",
+):
     # Remove existing folders if they exist
     if os.path.exists(folder_to_backup):
         shutil.rmtree(folder_to_backup)
@@ -161,7 +212,14 @@ def create_test_files_and_folders():
     Path(folder_to_backup).mkdir(exist_ok=True)
     Path(os.path.join(folder_to_backup, "subdir1")).mkdir(exist_ok=True)
 
+    # Create backup_location structure
+    Path(backup_location).mkdir(exist_ok=True)
+    Path(os.path.join(backup_location, "subdir1")).mkdir(exist_ok=True)
+
     current_time = datetime.now()
+    one_day_ago = current_time - timedelta(days=1)
+    one_day_later = current_time + timedelta(days=1)
+
     create_test_file(os.path.join(folder_to_backup, "file1.txt"), "File1 content\n", current_time)
     create_test_file(os.path.join(folder_to_backup, "file2.txt"), "File2 content\n", current_time)
     create_test_file(os.path.join(folder_to_backup, "file3.txt"), "File3 content\n", current_time)
@@ -172,27 +230,27 @@ def create_test_files_and_folders():
         os.path.join(folder_to_backup, "subdir1", "file5.txt"), "File5 content\n", current_time
     )
 
-    # Create backup_location structure
-    backup_location = "backup_location"
-    Path(backup_location).mkdir(exist_ok=True)
-    Path(os.path.join(backup_location, "subdir1")).mkdir(exist_ok=True)
-
     create_test_file(
-        os.path.join(backup_location, "file1.txt"),
-        "File1 older content\n",
-        current_time - timedelta(days=1),
+        os.path.join(backup_location, "file1.txt"), "File1 older content\n", one_day_ago
     )
     create_test_file(os.path.join(backup_location, "file2.txt"), "File2 content\n", current_time)
     create_test_file(
         os.path.join(backup_location, "subdir1", "file4.txt"),
         "File4 newer content\n",
-        current_time + timedelta(days=1),
+        one_day_later,
     )
     create_test_file(
         os.path.join(backup_location, "subdir1", "file6.txt"), "File6 content\n", current_time
     )
 
+    return current_time, one_day_ago, one_day_later
+
 
 if __name__ == "__main__":
-    create_test_files_and_folders()
-    merge_backup("folder_to_backup", "backup_location", verbose=True, dry_run=False)
+    # create_test_files_and_folders()
+    merge_backup(
+        r"/Users/mike/Documents/_proposals",
+        r"/Users/mike/Documents/science/_proposals",
+        verbose=True,
+        dry_run=False,
+    )
