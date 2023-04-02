@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "merge-backups"
+version = "0.1.0"
+description = ""
+authors = ["Mike Volk <michaelvolk1979@gmail.com>"]
+readme = "README.md"
+packages = [{include = "merge_backups"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
