@@ -77,36 +77,51 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
     if verbose:
         logging.getLogger().addHandler(console_handler)
 
+    # Build the file trees for both folder_to_backup and backup_location
+    # This creates a dictionary with relative file paths as keys and
+    # their modification times as values
     folder_to_backup_tree = build_file_tree(folder_to_backup)
     backup_location_tree = build_file_tree(backup_location)
 
+    # Iterate through each file in the folder_to_backup_tree
     for rel_path, source_mtime in folder_to_backup_tree.items():
         source_file_path = os.path.join(folder_to_backup, rel_path)
         dest_file_path = os.path.join(backup_location, rel_path)
 
+        # Check if the file exists in the backup_location_tree
         if rel_path in backup_location_tree:
             dest_mtime = backup_location_tree[rel_path]
 
+            # Compare the files in both locations to see if they are identical
             if filecmp.cmp(source_file_path, dest_file_path, shallow=False):
                 logging.info(f"Files are the same, deleting {source_file_path}")
                 if not dry_run:
                     os.remove(source_file_path)
             else:
+                # Create the .oldversion folder in the destination directory
+
                 old_versions_dir = os.path.join(os.path.dirname(dest_file_path), ".oldversion")
                 if not dry_run:
                     Path(old_versions_dir).mkdir(exist_ok=True)
 
+                # Compare file modification times to determine which file is newer
                 if source_mtime > dest_mtime:
+                    # Generate an old_version filename with the last modified timestamp
                     old_version_datetime = datetime.fromtimestamp(dest_mtime).strftime(
                         "%Y%m%d_%H%M%S"
                     )
                     old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
                     old_version_path = os.path.join(old_versions_dir, old_version_filename)
+
+                    # Move the older file in the backup_location to the .oldversion folder
+                    # and copy the newer file from the folder_to_backup to the backup_location
                     logging.info(f"Moving {dest_file_path} to {old_version_path}")
                     logging.info(f"Copying {source_file_path} to {dest_file_path}")
                     if not dry_run:
                         shutil.move(dest_file_path, old_version_path)
                         shutil.copy2(source_file_path, dest_file_path)
+
+                # Generate an old_version filename with the last modified timestamp
                 elif source_mtime < dest_mtime:
                     old_version_datetime = datetime.fromtimestamp(source_mtime).strftime(
                         "%Y%m%d_%H%M%S"
