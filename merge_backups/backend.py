@@ -32,14 +32,23 @@ from pathlib import Path
 
 
 def build_file_tree(root):
+    """
+    Build a file tree dictionary with relative paths as keys and modification times as values.
+
+    :param root: Path to the root directory
+    :return: Dictionary containing the file tree with relative paths and their modification times
+    """
     file_tree = {}
 
     for entry in os.scandir(root):
         if entry.is_file():
+            # Calculate the relative path and store the file's modification time
             rel_path = os.path.relpath(entry.path, root)
             file_tree[rel_path] = entry.stat().st_mtime
         elif entry.is_dir():
+            # Recursively build the file tree for the subdirectory
             subdir_tree = build_file_tree(entry.path)
+            # Merge the subdirectory tree with the main file tree
             for subpath, mtime in subdir_tree.items():
                 file_tree[os.path.join(entry.name, subpath)] = mtime
 
@@ -48,30 +57,11 @@ def build_file_tree(root):
 
 def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False):
     """
-    The code defines a function called merge_backup(). The function takes in
-    three required arguments and two optional arguments. The required arguments
-    are folder_to_backup and backup_location which are the paths of the folder
-    to be backed up and the backup location respectively. The optional arguments
-    are verbose and dry_run and are set to False by default.
-    The function handles file conflicts between the two locations by keeping the
-    newest file and moving the older version to a .oldversion subfolder. If both
-    files are identical, the function deletes the file from the folder to be
-    backed up. The function first initializes logging settings for different
-    levels of verbosity. It then builds file trees for both the folder to be
-    backed up and the backup location. These file trees are created as python
-    dictionaries with file paths as keys and their modification times as values.
-    The function then iterates through each file in the folder to be backed up
-    and checks if the file exists in the backup location. If the file exists,
-    the function compares the files in both locations to determine if they are
-    identical. If they are identical, the function deletes the file from the
-    folder to be backed up. If they are not identical, the function creates a
-    .oldversion folder in the destination directory, generates a new filename
-    with the last modified timestamp for the old version file, and moves the
-    older file in the backup location to the .oldversion folder while copying
-    the newer file from the folder to be backed up to the backup location. If
-    the file does not exist in the backup location, the function simply copies
-    the file from the folder to be backed up to the backup location. The
-    function returns nothing. All its output is in the form of logging messages.
+    Merge the contents of a folder to a backup location, resolving conflicts by
+    keeping the newest file and moving the older version to a .oldversion
+    subfolder. Identical files will be deleted from the folder to be backed up.
+    Log messages are generated based on the verbose option, and a dry_run option
+    allows simulation of the process without actually copying or deleting files.
 
     Args:
         folder_to_backup (str): The path of the folder to be backed up.
