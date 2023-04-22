@@ -18,11 +18,13 @@ def test_merge_backup():
         "file1.txt",
         "file2.txt",
         "file3.txt",
-        "subdir1/file4.txt",
-        "subdir1/file5.txt",
-        "subdir1/file6.txt",
-        f".oldversion/file1_{one_day_ago.strftime('%Y%m%d_%H%M%S')}.txt",
-        f"subdir1/.oldversion/file4_{current_time.strftime('%Y%m%d_%H%M%S')}.txt",
+        os.path.join("subdir1", "file4.txt"),
+        os.path.join("subdir1", "file5.txt"),
+        os.path.join("subdir1", "file6.txt"),
+        os.path.join(".oldversion", f"file1_{one_day_ago.strftime('%Y%m%d_%H%M%S')}.txt"),
+        os.path.join(
+            "subdir1", ".oldversion", f"file4_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
+        ),
     }
 
     # Verify that the files in the backup_location match the expected files
@@ -31,8 +33,8 @@ def test_merge_backup():
         for path in Path("backup_location").rglob("*")
         if path.is_file()
     }
-    pprint(backup_location_files)
-    pprint(expected_files)
+    # pprint(backup_location_files)
+    # pprint(expected_files)
     assert (
         backup_location_files == expected_files
     ), f"Expected files do not match the actual files: {backup_location_files}"
