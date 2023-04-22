@@ -55,6 +55,24 @@ def build_file_tree(root):
     return file_tree
 
 
+def is_unique_version(file_path, old_versions_dir):
+    """
+    Check if a file is unique compared to all other versions in the .oldversion folder.
+
+    Args:
+        file_path (str): The path of the file to compare.
+        old_versions_dir (str): The path of the .oldversion folder.
+
+    Returns:
+        bool: True if the file is unique, False if it's identical to any of the existing versions.
+    """
+    for old_version_file in os.listdir(old_versions_dir):
+        old_version_path = os.path.join(old_versions_dir, old_version_file)
+        if filecmp.cmp(file_path, old_version_path, shallow=False):
+            return False
+    return True
+
+
 def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False):
     """
     Merge the contents of a folder to a backup location, resolving conflicts by
@@ -91,6 +109,12 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
     if verbose:
         logging.getLogger().addHandler(console_handler)
 
+    # Initialize count variables
+    count_newer = 0
+    count_different = 0
+    count_deleted = 0
+    count_moved = 0
+
     # Build the file trees for both folder_to_backup and backup_location
     # This creates a dictionary with relative file paths as keys and
     # their modification times as values
@@ -115,6 +139,7 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
                 logging.info(f" SAME, deleting {source_file_path}")
                 if not dry_run:
                     os.remove(source_file_path)
+                count_different += 1
             else:
                 # If the content is different, determine which file is newer
                 # and move the older file to the '.oldversion' subfolder.
@@ -132,14 +157,27 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
                     )
                     old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
                     old_version_path = os.path.join(old_versions_dir, old_version_filename)
-                    logging.info(
-                        f" NEWER: {source_file_path} is newer than destination file {dest_file_path}"
-                    )
-                    logging.info(f"  Moving {dest_file_path} to {old_version_path}")
-                    logging.info(f"  Moving {source_file_path} to {dest_file_path}")
-                    if not dry_run:
-                        shutil.move(dest_file_path, old_version_path)
-                        shutil.move(source_file_path, dest_file_path)
+
+                    # Check if the file is unique compared to all other versions in the .oldversion folder
+                    if is_unique_version(dest_file_path, old_versions_dir):
+                        logging.info(
+                            f" NEWER: {source_file_path} is newer than destination file {dest_file_path}"
+                        )
+                        logging.info(f"  Moving {dest_file_path} to {old_version_path}")
+                        logging.info(f"  Moving {source_file_path} to {dest_file_path}")
+                        if not dry_run:
+                            shutil.move(dest_file_path, old_version_path)
+                            shutil.move(source_file_path, dest_file_path)
+                        count_newer += 1
+                    else:
+                        logging.info(
+                            f" NOT UNIQUE: {dest_file_path} is identical to an existing version in {old_versions_dir}"
+                        )
+                        logging.info(f"  Deleting {source_file_path}")
+                        if not dry_run:
+                            os.remove(source_file_path)
+                        count_deleted += 1
+
                 # If the destination file is newer, move the source file to
                 # '.oldversion'.
                 elif source_mtime < dest_mtime:
@@ -154,6 +192,7 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
                     logging.info(f" Moving {source_file_path} to {old_version_path}")
                     if not dry_run:
                         shutil.move(source_file_path, old_version_path)
+                    count_moved += 1
         # If the file does not exist in the destination file tree,
         # simply move the file from the source to the destination.
         else:
@@ -167,8 +206,12 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
                 shutil.move(source_file_path, dest_file_path)
 
     logging.info(
-        f"FINISHED copying {len(folder_to_backup_tree.items())} files from {folder_to_backup} to {backup_location}"
+        f"FINISHED comparing {len(folder_to_backup_tree.items())} files from {folder_to_backup} to {backup_location}"
     )
+    logging.info(f"Newer files: {count_newer}")
+    logging.info(f"Different versions: {count_different}")
+    logging.info(f"Deleted files: {count_deleted}")
+    logging.info(f"Moved files: {count_moved}")
 
     if not dry_run:
         # Remove the folder_to_backup after successful merge
