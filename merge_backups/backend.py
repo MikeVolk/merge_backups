@@ -29,6 +29,8 @@ import shutil
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from tqdm import tqdm
+import sys
 
 
 def build_file_tree(root):
@@ -122,88 +124,98 @@ def merge_backup(folder_to_backup, backup_location, verbose=False, dry_run=False
     backup_location_tree = build_file_tree(backup_location)
 
     # Iterate through the source file tree
-    for rel_path, source_mtime in folder_to_backup_tree.items():
-        # Construct the absolute file paths for the source and destination files
-        source_file_path = os.path.join(folder_to_backup, rel_path)
-        dest_file_path = os.path.join(backup_location, rel_path)
+    with tqdm(
+        total=len(folder_to_backup_tree.items()),
+        file=sys.stderr,
+        unit="file",
+        desc="Processing files",
+        disable=not verbose,
+    ) as pbar:
+        for rel_path, source_mtime in folder_to_backup_tree.items():
+            # for rel_path, source_mtime in folder_to_backup_tree.items():
+            # Construct the absolute file paths for the source and destination files
+            source_file_path = os.path.join(folder_to_backup, rel_path)
+            dest_file_path = os.path.join(backup_location, rel_path)
 
-        # Check if the file exists in the destination file tree
-        if rel_path in backup_location_tree:
-            logging.info(f"Found file {rel_path} in backup location")
-            # Get the modification time of the destination file
-            dest_mtime = backup_location_tree[rel_path]
+            # Check if the file exists in the destination file tree
+            if rel_path in backup_location_tree:
+                logging.info(f"Found file {rel_path} in backup location")
+                # Get the modification time of the destination file
+                dest_mtime = backup_location_tree[rel_path]
 
-            # Compare the content of the source and destination files.
-            # If the content is the same, delete the source file.
-            if filecmp.cmp(source_file_path, dest_file_path, shallow=False):
-                logging.info(f" SAME, deleting {source_file_path}")
-                if not dry_run:
-                    os.remove(source_file_path)
-                count_different += 1
-            else:
-                # If the content is different, determine which file is newer
-                # and move the older file to the '.oldversion' subfolder.
-
-                # Create the '.oldversion' subfolder if it doesn't exist
-                old_versions_dir = os.path.join(os.path.dirname(dest_file_path), ".oldversion")
-                if not dry_run:
-                    Path(old_versions_dir).mkdir(exist_ok=True)
-
-                # If the source file is newer, move the destination file to
-                # '.oldversion' and copy the source file to the destination.
-                if source_mtime > dest_mtime:
-                    old_version_datetime = datetime.fromtimestamp(dest_mtime).strftime(
-                        "%Y%m%d_%H%M%S"
-                    )
-                    old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
-                    old_version_path = os.path.join(old_versions_dir, old_version_filename)
-
-                    # Check if the file is unique compared to all other versions in the .oldversion folder
-                    if is_unique_version(dest_file_path, old_versions_dir):
-                        logging.info(
-                            f" NEWER: {source_file_path} is newer than destination file {dest_file_path}"
-                        )
-                        logging.info(f"  Moving {dest_file_path} to {old_version_path}")
-                        logging.info(f"  Moving {source_file_path} to {dest_file_path}")
-                        if not dry_run:
-                            shutil.move(dest_file_path, old_version_path)
-                            shutil.move(source_file_path, dest_file_path)
-                        count_newer += 1
-                    else:
-                        logging.info(
-                            f" NOT UNIQUE: {dest_file_path} is identical to an existing version in {old_versions_dir}"
-                        )
-                        logging.info(f"  Deleting {source_file_path}")
-                        if not dry_run:
-                            os.remove(source_file_path)
-                        count_deleted += 1
-
-                # If the destination file is newer, move the source file to
-                # '.oldversion'.
-                elif source_mtime < dest_mtime:
-                    old_version_datetime = datetime.fromtimestamp(source_mtime).strftime(
-                        "%Y%m%d_%H%M%S"
-                    )
-                    old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
-                    old_version_path = os.path.join(old_versions_dir, old_version_filename)
-                    logging.info(
-                        f" OLDER: {source_file_path} is older than destination file {dest_file_path}"
-                    )
-                    logging.info(f" Moving {source_file_path} to {old_version_path}")
+                # Compare the content of the source and destination files.
+                # If the content is the same, delete the source file.
+                if filecmp.cmp(source_file_path, dest_file_path, shallow=False):
+                    logging.info(f" SAME, deleting {source_file_path}")
                     if not dry_run:
-                        shutil.move(source_file_path, old_version_path)
-                    count_moved += 1
-        # If the file does not exist in the destination file tree,
-        # simply move the file from the source to the destination.
-        else:
-            logging.info(f"Moving {source_file_path} to {dest_file_path}")
-            if not dry_run:
-                # Create the destination folder if it doesn't exist
-                dest_folder_path = os.path.dirname(dest_file_path)
-                Path(dest_folder_path).mkdir(parents=True, exist_ok=True)
+                        os.remove(source_file_path)
+                    count_different += 1
+                else:
+                    # If the content is different, determine which file is newer
+                    # and move the older file to the '.oldversion' subfolder.
 
-                # Copy the file from the source to the destination
-                shutil.move(source_file_path, dest_file_path)
+                    # Create the '.oldversion' subfolder if it doesn't exist
+                    old_versions_dir = os.path.join(os.path.dirname(dest_file_path), ".oldversion")
+                    if not dry_run:
+                        Path(old_versions_dir).mkdir(exist_ok=True)
+
+                    # If the source file is newer, move the destination file to
+                    # '.oldversion' and copy the source file to the destination.
+                    if source_mtime > dest_mtime:
+                        old_version_datetime = datetime.fromtimestamp(dest_mtime).strftime(
+                            "%Y%m%d_%H%M%S"
+                        )
+                        old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
+                        old_version_path = os.path.join(old_versions_dir, old_version_filename)
+
+                        # Check if the file is unique compared to all other versions in the .oldversion folder
+                        if is_unique_version(dest_file_path, old_versions_dir):
+                            logging.info(
+                                f" NEWER: {source_file_path} is newer than destination file {dest_file_path}"
+                            )
+                            logging.info(f"  Moving {dest_file_path} to {old_version_path}")
+                            logging.info(f"  Moving {source_file_path} to {dest_file_path}")
+                            if not dry_run:
+                                shutil.move(dest_file_path, old_version_path)
+                                shutil.move(source_file_path, dest_file_path)
+                            count_newer += 1
+                        else:
+                            logging.info(
+                                f" NOT UNIQUE: {dest_file_path} is identical to an existing version in {old_versions_dir}"
+                            )
+                            logging.info(f"  Deleting {source_file_path}")
+                            if not dry_run:
+                                os.remove(source_file_path)
+                            count_deleted += 1
+
+                    # If the destination file is newer, move the source file to
+                    # '.oldversion'.
+                    elif source_mtime < dest_mtime:
+                        old_version_datetime = datetime.fromtimestamp(source_mtime).strftime(
+                            "%Y%m%d_%H%M%S"
+                        )
+                        old_version_filename = f"{os.path.splitext(os.path.basename(rel_path))[0]}_{old_version_datetime}{os.path.splitext(os.path.basename(rel_path))[1]}"
+                        old_version_path = os.path.join(old_versions_dir, old_version_filename)
+                        logging.info(
+                            f" OLDER: {source_file_path} is older than destination file {dest_file_path}"
+                        )
+                        logging.info(f" Moving {source_file_path} to {old_version_path}")
+                        if not dry_run:
+                            shutil.move(source_file_path, old_version_path)
+                        count_moved += 1
+            # If the file does not exist in the destination file tree,
+            # simply move the file from the source to the destination.
+            else:
+                logging.info(f"Moving {source_file_path} to {dest_file_path}")
+                if not dry_run:
+                    # Create the destination folder if it doesn't exist
+                    dest_folder_path = os.path.dirname(dest_file_path)
+                    Path(dest_folder_path).mkdir(parents=True, exist_ok=True)
+
+                    # Copy the file from the source to the destination
+                    shutil.move(source_file_path, dest_file_path)
+                    count_moved += 1
+        pbar.update(1)
 
     logging.info(
         f"FINISHED comparing {len(folder_to_backup_tree.items())} files from {folder_to_backup} to {backup_location}"

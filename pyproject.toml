@@ -10,6 +10,7 @@ packages = [{include = "merge_backups"}]
 python = "^3.10"
 pytest = "^7.2.2"
 ipython = "^8.12.0"
+tqdm = "^4.65.0"
 
 
 [build-system]
